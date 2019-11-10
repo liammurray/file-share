@@ -13,6 +13,31 @@ Parameters:
     Default: dev
     Description: Stage that can be added to resource names
 
+  # aws acm list-certificates --region us-east-1
+  ACMCertificateIdentifier:
+    Description:    The AWS Certificate Manager (ACM) certificate identifier.
+    Type:           String
+    Default:        "7df54143-63eb-4517-a3b9-5ebbcb12074d"
+
+  SslSupportMethod:
+    Description:    Specifies how CloudFront serves HTTPS requests.
+    Type:           String
+    Default:        "sni-only"
+    AllowedValues:
+      - sni-only
+      - vip
+
+  MinimumProtocolVersion:
+    Description:    The minimum version of the SSL protocol that you want CloudFront to use for HTTPS connections.
+    Type:           String
+    Default:        "TLSv1"
+    AllowedValues:
+      - TLSv1
+      - TLSv1.2_2018
+      - TLSv1.1_2016
+      - TLSv1_2016
+      - SSLv3
+
 Mappings:
   # Map stage to cloudfront distribution alias
   AliasMap:
@@ -89,7 +114,9 @@ Resources:
         DefaultRootObject: index.html
         PriceClass: PriceClass_100
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: !Sub 'arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/${ACMCertificateIdentifier}'
+          SslSupportMethod:  !Ref 'SslSupportMethod'
+          MinimumProtocolVersion: !Ref 'MinimumProtocolVersion'
         Aliases:
           - !FindInMap [AliasMap, !Ref Stage, Alias]
         Origins:
