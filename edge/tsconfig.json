@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "./src",
+    "declaration": true,
+    "esModuleInterop": true,
+    "lib": ["es6", "esnext.asynciterable"],
+    "module": "commonjs",
+    "types": ["node", "mocha"],
+    "noImplicitAny": false,
+    "outDir": "dist",
+    "paths": {
+      "~/*": ["src/*"]
+    },
+    "sourceMap": true,
+    "strict": true,
+    "target": "esnext"
+  },
+  "include": ["src/**/*"]
+}

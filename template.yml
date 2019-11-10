@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  S3 Bucket with cloudfront distrubtion (lambda edge) to provide access
+
+Parameters:
+  Stage:
+    Type: String
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Default: dev
+    Description: Stage that can be added to resource names
+
+Mappings:
+  # Map stage to cloudfront distribution alias
+  AliasMap:
+    dev:
+      Alias: "dev-share.nod15c.com"
+    staging:
+      Alias: "staging-share.nod15c.com"
+    production:
+      Alias: "share.nod15c.com"
+
+Globals:
+  Function:
+    Runtime: nodejs10.x
+    Timeout: 5
+    Tags:
+      Stack: !Sub ${AWS::StackName}
+
+Outputs:
+  Host:
+    Value: !GetAtt Distribution.DomainName
+
+  Bucket:
+    Value: !Ref Bucket
+
+Resources:
+  ###################
+  Bucket:
+    Type: AWS::S3::Bucket
+    # DeletionPolicy: Retain
+    Properties:
+      LoggingConfiguration:
+        DestinationBucketName: !Ref BucketLogs
+        LogFilePrefix: s3-access/
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [GET]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            MaxAge: 3000
+
+  BucketLogs:
+    # DeletionPolicy: Retain
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: LogDeliveryWrite
+
+  ###################
+  BucketOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "access-identity-${Bucket}"
+
+  # Allow CF OID to access bucket
+  BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref Bucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:Get*
+            Effect: "Allow"
+            Resource: !Sub "arn:aws:s3:::${Bucket}/*"
+            Principal:
+              CanonicalUser: !GetAtt BucketOriginAccessIdentity.S3CanonicalUserId
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${Stage} - Share file access via Lambda@Edge'
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        Aliases:
+          - !FindInMap [AliasMap, !Ref Stage, Alias]
+        Origins:
+          - DomainName: !GetAtt Bucket.DomainName
+            #DomainName: !Sub "${Bucket}.s3.${AWS::Region}.amazonaws.com"
+            Id: sharedBucketOrigin # !RefBucket
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${BucketOriginAccessIdentity}"
+            # CustomOriginConfig:
+            #   HTTPPort: 80
+            #   OriginProtocolPolicy: match-viewer
+        Logging:
+          IncludeCookies: false
+          Bucket: !GetAtt BucketLogs.DomainName
+          Prefix: cloudfront-logs/
+        DefaultCacheBehavior:
+          AllowedMethods:
+          - GET
+          - HEAD
+          - OPTIONS
+          TargetOriginId: sharedBucketOrigin
+          # ViewerProtocolPolicy: redirect-to-https
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+            Headers:
+              - Origin
+              - Access-Control-Request-Method
+              - Access-Control-Request-Headers
+          ViewerProtocolPolicy: allow-all
+          LambdaFunctionAssociations:
+            - EventType: viewer-request
+              # {FunctionARN}:{Version}, i.e. always point to "live"
+              LambdaFunctionARN: !Ref EdgeLambda.Version #!GetAtt EdgeLambda.FunctionArn
+
+
+  EdgeLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Edge lambda for basic auth
+      CodeUri: edge/dist
+      Handler: index.handler
+      Timeout: 5
+      Role: !GetAtt EdgeLambdaFunctionRole.Arn
+      # Auto publishes new version and updates alias ("live") to point to it
+      AutoPublishAlias: live
+
+
+  EdgeLambdaFunctionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+        Path: "/"
+        ManagedPolicyArns:
+            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: "AllowLambdaServiceToAssumeRole"
+              Effect: "Allow"
+              Action:
+                - "sts:AssumeRole"
+              Principal:
+                Service:
+                  - "lambda.amazonaws.com"
+                  - "edgelambda.amazonaws.com"
+
