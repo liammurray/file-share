@@ -11,6 +11,7 @@ STAGE = dev
 DEPLOY_REGION = us-east-1
 
 
+# List of targets that are not files
 .PHONY: \
 	all \
 	check \
@@ -21,7 +22,9 @@ DEPLOY_REGION = us-east-1
 	build \
 	clean \
 	package \
-	deploy
+	deploy \
+	errors \
+	outputs
 
 SHELL=/usr/bin/env bash -o pipefail
 
@@ -34,8 +37,7 @@ check:
 	@$(call check-dependency,aws)
 	@$(call check-dependency,jq)
 	@echo "Dirs: $(subdirs)"
-
-all: build package deploy
+	@echo "Try: make build, make test, make deploy"
 
 compile:
 	@for dir in $(subdirs); do \
@@ -78,6 +80,14 @@ deploy: $(OUTPUT_TEMPLATE)
 		--capabilities CAPABILITY_NAMED_IAM \
 		--region $(DEPLOY_REGION)
 
+# changeset: $(OUTPUT_TEMPLATE)
+# 	@aws cloudformation deploy \
+# 		--no-execute-changeset \
+# 		--template-file $(OUTPUT_TEMPLATE) \
+# 		--stack-name $(STACK_NAME) \
+# 		--capabilities CAPABILITY_NAMED_IAM \
+# 		--region $(DEPLOY_REGION)
+
 output:
 	@aws cloudformation describe-stacks \
 		--stack-name $(STACK_NAME) \
@@ -94,3 +104,9 @@ errors:
 			--stack-name $(STACK_NAME) \
 			--region $(DEPLOY_REGION) \
 			| jq '.StackEvents[]|select(.ResourceStatus|index("FAILED"))'
+
+outputs:
+	@aws cloudformation describe-stacks \
+			--stack-name $(STACK_NAME) \
+		  --region $(DEPLOY_REGION) \
+			| jq '.Stacks[].Outputs'

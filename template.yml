@@ -57,10 +57,25 @@ Globals:
 
 Outputs:
   Host:
+    Description: "Name of CF distribution"
     Value: !GetAtt Distribution.DomainName
 
+  HostAlt:
+    Description: "Alternate Domain Names (CNAME)"
+    Value: !FindInMap [AliasMap, !Ref Stage, Alias]
+
   Bucket:
+    Description: "Name of origin bucket"
     Value: !Ref Bucket
+
+  LoggingBucket:
+    Description: "Name of bucket for s3 and cloudwatch access logs"
+    Value: !Ref BucketLogs
+
+  LambdaEdgeFunctionARN:
+    Description: "Lambda@Edge function ARN"
+    Value: !Ref EdgeLambda.Version
+
 
 Resources:
   ###################
@@ -99,7 +114,7 @@ Resources:
       PolicyDocument:
         Statement:
           - Action:
-              - s3:Get*
+              - s3:GetObject
             Effect: "Allow"
             Resource: !Sub "arn:aws:s3:::${Bucket}/*"
             Principal:
@@ -121,13 +136,9 @@ Resources:
           - !FindInMap [AliasMap, !Ref Stage, Alias]
         Origins:
           - DomainName: !GetAtt Bucket.DomainName
-            #DomainName: !Sub "${Bucket}.s3.${AWS::Region}.amazonaws.com"
             Id: sharedBucketOrigin # !RefBucket
             S3OriginConfig:
               OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${BucketOriginAccessIdentity}"
-            # CustomOriginConfig:
-            #   HTTPPort: 80
-            #   OriginProtocolPolicy: match-viewer
         Logging:
           IncludeCookies: false
           Bucket: !GetAtt BucketLogs.DomainName
@@ -171,7 +182,8 @@ Resources:
     Properties:
         Path: "/"
         ManagedPolicyArns:
-            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+            - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+            - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
         AssumeRolePolicyDocument:
           Version: "2012-10-17"
           Statement:
